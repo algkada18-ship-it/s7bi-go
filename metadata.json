@@ -1,8 +1,0 @@
-{
-  "name": "s7bi GO",
-  "description": "A professional Algerian delivery platform connecting users, shops, and workers with a secure subscription management system.",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
-}
