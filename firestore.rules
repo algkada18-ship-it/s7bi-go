@@ -1,0 +1,125 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    
+    // Fetch user once per request
+    function getUserData(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data;
+    }
+    
+    function isAdmin() { 
+      return isSignedIn() && getUserData(request.auth.uid).role == 'admin';
+    }
+    
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isVerified() { return request.auth.token.email_verified == true; }
+
+    // --- Entity Validations ---
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'name', 'email', 'role', 'wilaya', 'subscription', 'approved'])
+        && data.uid == request.auth.uid
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.email is string && data.email.size() > 5 && data.email.size() <= 100
+        && data.role in ['user', 'worker', 'shop', 'admin']
+        && data.wilaya is string && data.wilaya.size() > 0
+        && data.subscription in ['none', 'yearly', 'lifetime']
+        && data.approved is bool;
+    }
+
+    function isValidShop(data) {
+      return data.keys().hasAll(['name', 'ownerId', 'wilaya'])
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.ownerId == request.auth.uid
+        && data.wilaya is string && data.wilaya.size() > 0;
+    }
+
+    function isValidPayment(data) {
+      return data.keys().hasAll(['userId', 'type', 'proofImageUrl', 'status', 'createdAt', 'userRole'])
+        && data.userId == request.auth.uid
+        && data.type in ['yearly', 'lifetime']
+        && data.proofImageUrl is string && data.proofImageUrl.size() > 10
+        && data.status == 'pending'
+        && data.createdAt == request.time
+        && data.userRole in ['worker', 'shop'];
+    }
+
+    function isValidOrder(data) {
+      return data.keys().hasAll(['userId', 'shopId', 'status', 'createdAt', 'totalPrice', 'items'])
+        && data.userId == request.auth.uid
+        && data.shopId is string
+        && data.status == 'pending'
+        && data.createdAt == request.time
+        && data.totalPrice is number && data.totalPrice >= 0
+        && data.items is list;
+    }
+
+    // --- Collection Matches ---
+
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow create: if isSignedIn() 
+        && isValidId(userId)
+        && isValidUser(incoming())
+        && incoming().role != 'admin'
+        && incoming().approved == false
+        && incoming().subscription == 'none';
+      
+      allow update: if (
+        (isOwner(userId) && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'wilaya']))
+        || 
+        (isAdmin() && incoming().diff(existing()).affectedKeys().hasAny(['role', 'approved', 'subscription']))
+      );
+    }
+
+    match /shops/{shopId} {
+      allow read: if true;
+      allow create: if isSignedIn() && isValidId(shopId) && isValidShop(incoming());
+      allow update: if (isOwner(existing().ownerId) && isValidShop(incoming())) || isAdmin();
+      allow delete: if isAdmin();
+
+      match /products/{productId} {
+        allow read: if true;
+        allow write: if (isSignedIn() && isOwner(getUserData(shopId).ownerId)) || isAdmin();
+      }
+    }
+
+    match /orders/{orderId} {
+      allow create: if isSignedIn() && isValidOrder(incoming());
+      allow read: if isSignedIn() && (
+        resource.data.userId == request.auth.uid 
+        || (resource.data.workerId != null && resource.data.workerId == request.auth.uid)
+        || (resource.data.shopId != null && getUserData(resource.data.shopId).ownerId == request.auth.uid)
+        || isAdmin()
+        || (resource.data.status == 'pending' && getUserData(request.auth.uid).role == 'worker' && getUserData(request.auth.uid).approved == true)
+      );
+      
+      allow update: if isSignedIn() && (
+        // User cancelling
+        (resource.data.userId == request.auth.uid && incoming().status == 'cancelled' && existing().status == 'pending' && incoming().diff(existing()).affectedKeys().hasOnly(['status']))
+        // Worker accepting
+        || (getUserData(request.auth.uid).role == 'worker' && getUserData(request.auth.uid).approved == true && existing().status == 'pending' && incoming().status == 'accepted' && incoming().workerId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['workerId', 'status', 'deliveryTime']))
+        // Worker delivering
+        || (resource.data.workerId == request.auth.uid && existing().status == 'accepted' && incoming().status == 'delivered' && incoming().diff(existing()).affectedKeys().hasOnly(['status']))
+        || isAdmin()
+      );
+    }
+
+    match /payments/{paymentId} {
+      allow get: if isSignedIn() && (isOwner(resource.data.userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isSignedIn() && isValidId(paymentId) && isValidPayment(incoming());
+      allow update: if isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['status']);
+    }
+  }
+}

@@ -1,0 +1,101 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Represents any user of the system (Customer, Worker, Shop Owner, or Admin).",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "worker", "shop", "admin"] },
+        "wilaya": { "type": "string" },
+        "subscription": { "type": "string", "enum": ["none", "yearly", "lifetime"] },
+        "approved": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "name", "email", "role", "wilaya", "subscription", "approved"]
+    },
+    "Shop": {
+      "title": "Shop",
+      "description": "Represents a store registered on the platform.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "logoUrl": { "type": "string" },
+        "description": { "type": "string" },
+        "wilaya": { "type": "string" },
+        "address": { "type": "string" }
+      },
+      "required": ["name", "ownerId", "wilaya"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "A product sold by a shop.",
+      "type": "object",
+      "properties": {
+        "shopId": { "type": "string" },
+        "name": { "type": "string" },
+        "price": { "type": "number" },
+        "imageUrl": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "required": ["shopId", "name", "price"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "A delivery order.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "shopId": { "type": "string" },
+        "workerId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "delivered"] },
+        "items": { "type": "array" },
+        "totalPrice": { "type": "number" },
+        "deliveryAddress": { "type": "string" },
+        "deliveryTime": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "shopId", "status", "createdAt"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "A subscription payment proof.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "type": { "type": "string", "enum": ["yearly", "lifetime"] },
+        "proofImageUrl": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "userRole": { "type": "string" },
+        "amount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "type", "proofImageUrl", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User profiles and account settings."
+    },
+    "shops/{shopId}": {
+      "schema": "Shop",
+      "description": "Registered stores."
+    },
+    "shops/{shopId}/products/{productId}": {
+      "schema": "Product",
+      "description": "Products available in each store."
+    },
+    "orders/{orderId}": {
+      "schema": "Order",
+      "description": "Transaction and delivery records."
+    },
+    "payments/{paymentId}": {
+      "schema": "Payment",
+      "description": "Subscription verification requests."
+    }
+  }
+}
